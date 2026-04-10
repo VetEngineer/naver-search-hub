@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import time
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
 logger = logging.getLogger(__name__)
 

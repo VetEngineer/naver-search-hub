@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 
 import requests as req
 
-from fastapi import FastAPI, Query, Header, HTTPException
+from fastapi import FastAPI, Query, Header, HTTPException, Request, Response as FastAPIResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
@@ -18,6 +19,27 @@ logger = logging.getLogger(__name__)
 _EXT_SVC_ERROR = "외부 서비스 오류가 발생했습니다."
 
 app = FastAPI(title="네이버 검색 허브")
+
+# ── CORS ──
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://ntools.hakhamsolution.co.kr",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["X-Naver-Client-Id", "X-Naver-Client-Secret"],
+)
+
+
+# ── Security Headers (CWE-693) ──
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response: FastAPIResponse = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -241,6 +263,8 @@ def image_proxy(url: str = Query(..., min_length=1)):
     if not _is_allowed_image_url(url):
         raise HTTPException(status_code=400, detail="허용되지 않는 이미지 도메인")
 
+    _MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+
     try:
         resp = req.get(
             url,
@@ -249,24 +273,40 @@ def image_proxy(url: str = Query(..., min_length=1)):
                 "Referer": "https://blog.naver.com",
             },
             timeout=5,
+            stream=True,
         )
         resp.raise_for_status()
+
+        # Content-Length 헤더로 사전 차단 (서버가 제공하는 경우)
+        cl = resp.headers.get("Content-Length")
+        if cl and int(cl) > _MAX_IMAGE_SIZE:
+            resp.close()
+            raise HTTPException(status_code=400, detail="이미지 크기가 너무 큽니다")
+
+        # 청크 단위로 읽되 상한 초과 시 즉시 중단
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            total += len(chunk)
+            if total > _MAX_IMAGE_SIZE:
+                resp.close()
+                raise HTTPException(status_code=400, detail="이미지 크기가 너무 큽니다")
+            chunks.append(chunk)
+        body = b"".join(chunks)
+    except HTTPException:
+        raise
     except req.RequestException as e:
         logger.error("image_proxy request error: %s", e)
         raise HTTPException(status_code=502, detail=_EXT_SVC_ERROR)
-
-    if len(resp.content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="이미지 크기가 너무 큽니다")
 
     _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"}
     raw_ct = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
     content_type = raw_ct if raw_ct in _ALLOWED_IMAGE_TYPES else "image/jpeg"
     return Response(
-        content=resp.content,
+        content=body,
         media_type=content_type,
         headers={
             "Cache-Control": "public, max-age=86400",
-            "X-Content-Type-Options": "nosniff",
         },
     )
 
