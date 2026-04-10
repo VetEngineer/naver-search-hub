@@ -402,6 +402,10 @@ _PLACE_SKIP = frozenset({
     "포토 리뷰 이벤트 쿠폰", "스마트 주문", "네이버 예약",
     "테이블링", "캐치테이블", "원테이블", "웨이팅",
     "영수증 리뷰", "방문", "찜", "메뉴 보기", "전화",
+    "방문자", "블로그", "이미지 로딩중", "리뷰 로딩중",
+    "connect+ 혜택", "이전", "현재", "다음", "전체",
+    "검색하기", "이미지 수", "관련도순", "진료 종료", "진료 중",
+    "진료중", "야간/휴일", "휠체어출입가능",
 })
 
 _ADDR_PREFIX = re.compile(
@@ -416,12 +420,13 @@ _ADDR_PREFIX = re.compile(
 
 _NAME_DENY = re.compile(
     r'(?:별점|리뷰|쿠폰|이벤트|할인|알림|포토|영수증|스마트|예약|찜|웨이팅'
-    r'|테이블링|캐치|원테이블|카카오|네이버|주문|결제|혜택)'
+    r'|테이블링|캐치|원테이블|카카오|네이버|주문|결제|혜택'
+    r'|전문의|진료|접수마감)'
 )
 
 
 def _parse_place_cards(text: str, place_ids: list[str], display: int) -> list[dict]:
-    """통합검색 플레이스 텍스트에서 장소 카드를 추출 (3가지 패턴 통합)"""
+    """통합검색 플레이스 텍스트에서 장소 카드를 추출 (4가지 패턴 통합)"""
     items = []
 
     # 패턴 A: "업체명|네이버페이|전화|...|방문자 리뷰|N|블로그 리뷰|N"
@@ -461,7 +466,66 @@ def _parse_place_cards(text: str, place_ids: list[str], display: int) -> list[di
                 break
         return items
 
-    # 패턴 C: 리뷰|N 앵커 기반 (홍대 카페 등)
+    # 패턴 D: "방문자 리뷰|N|블로그 리뷰|N" 쌍 기반 (성심당 등)
+    pat_d = r'방문자 리뷰\|([\d,.만]+)\|블로그 리뷰\|([\d,.만]+)'
+    matches_d = list(re.finditer(pat_d, text))
+    if matches_d:
+        for i, md in enumerate(matches_d[:display]):
+            # 첫 카드: 헤더/광고 텍스트 오염 방지를 위해 lookback 제한
+            card_start = matches_d[i - 1].end() if i > 0 else max(0, md.start() - 300)
+            card_text = text[card_start:md.start()]
+            parsed = _parse_one_card(card_text)
+            visitor = _parse_review_count(md.group(1))
+            blog = _parse_review_count(md.group(2))
+            pid = place_ids[i] if i < len(place_ids) else ""
+            if parsed["name"]:
+                items.append(_mk(**parsed, visitor=visitor, blog=blog, pid=pid))
+        return items
+
+    # 패턴 E: 커머스 키워드(네이버페이|예약|톡톡) 기반 업체명 추출 (미용실, 맛집 등)
+    _CARD_MARKERS = {'네이버페이', '예약', '톡톡'}
+    parts = text.split('|')
+    card_positions: list[tuple[int, str]] = []  # (parts index, name)
+    for j in range(len(parts) - 1):
+        if parts[j + 1].strip() in _CARD_MARKERS:
+            name = parts[j].strip()
+            if (name and name not in _PLACE_SKIP
+                    and name not in _CARD_MARKERS
+                    and not _NAME_DENY.search(name)
+                    and 2 <= len(name) <= 40
+                    and not re.match(r'^[\d,.]+$', name)
+                    and not name.startswith('영업')
+                    and not _ADDR_PREFIX.match(name)
+                    and not re.match(r'^\d+km$', name)):
+                if not card_positions or card_positions[-1][1] != name:
+                    card_positions.append((j, name))
+
+    if card_positions:
+        # 카드 경계 확인 + 광고 여부 판별
+        cards: list[tuple[str, bool]] = []  # (name, is_ad)
+        for idx, (j, name) in enumerate(card_positions):
+            next_j = card_positions[idx + 1][0] if idx + 1 < len(card_positions) else len(parts)
+            segment_tokens = [p.strip() for p in parts[j:next_j]]
+            cards.append((name, '광고' in segment_tokens))
+
+        organic_idx = 0
+        for i, (name, is_ad) in enumerate(cards):
+            if is_ad:
+                continue
+            # 카드 텍스트 범위 내에서 리뷰 수 추출 (인덱스 매핑 대신)
+            j = card_positions[i][0]
+            next_j = card_positions[i + 1][0] if i + 1 < len(card_positions) else len(parts)
+            card_text = '|'.join(parts[j:next_j])
+            rm = re.search(r'(?:방문자 )?리뷰\|([\d,.만]+)', card_text)
+            visitor = _parse_review_count(rm.group(1)) if rm else 0
+            pid = place_ids[organic_idx] if organic_idx < len(place_ids) else ""
+            organic_idx += 1
+            items.append(_mk(name=name, visitor=visitor, pid=pid))
+            if len(items) >= display:
+                break
+        return items
+
+    # 패턴 C: 리뷰|N 앵커 기반 (fallback)
     for i, rm in enumerate(re.finditer(r'리뷰\|([\d,.만]+)', text)):
         if len(items) >= display:
             break
@@ -485,7 +549,7 @@ def _parse_one_card(card: str) -> dict:
         p = p.strip()
         if not p or p in _PLACE_SKIP:
             continue
-        if re.match(r'^0\d{2,3}-\d{3,4}-\d{4}$', p):
+        if re.match(r'^(?:0\d{2,3}-\d{3,4}-\d{4}|1\d{3}-\d{4})$', p):
             phone = p; continue
         if p.startswith("영업") or p.startswith("곧 영업"):
             continue
@@ -494,6 +558,8 @@ def _parse_one_card(card: str) -> dict:
         if re.match(r'^\d+km$', p):
             continue
         if "쿠폰" in p and len(p) > 5:
+            continue
+        if re.match(r'^[의치약한]\d+$', p):  # 의료기관 ID (의129495, 치35854 등)
             continue
         if _ADDR_PREFIX.match(p):
             addr = p; continue
