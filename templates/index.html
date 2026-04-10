@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>네이버 검색 허브</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface-hover: #22263a;
+      --border: #2a2e3e;
+      --text: #e4e6ed;
+      --text-dim: #8b8fa3;
+      --accent: #03c75a;
+      --accent-dim: #02a34a;
+      --price: #ff6b6b;
+      --tag-bg: #252a3a;
+      --warn: #f0a030;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; padding: 3rem 1rem 2rem; border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em; }
+    header h1 span { color: var(--accent); }
+    header p { color: var(--text-dim); margin-top: 0.4rem; font-size: 0.9rem; }
+
+    /* ── API Key Setup ── */
+    .api-setup { max-width: 640px; margin: 1.5rem auto 0; padding: 0 1rem; }
+    .api-toggle {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.8rem; color: var(--text-dim); cursor: pointer;
+      margin-bottom: 0.5rem; user-select: none;
+    }
+    .api-toggle:hover { color: var(--text); }
+    .api-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+    .api-toggle .arrow.open { transform: rotate(90deg); }
+    .api-fields { display: none; gap: 0.5rem; flex-direction: column; }
+    .api-fields.open { display: flex; }
+    .api-fields input {
+      padding: 0.5rem 0.75rem; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--surface); color: var(--text);
+      font-size: 0.85rem; outline: none; font-family: monospace;
+    }
+    .api-fields input:focus { border-color: var(--accent); }
+    .api-status { font-size: 0.75rem; padding: 0.3rem 0; }
+    .api-status.ok { color: var(--accent); }
+    .api-status.missing { color: var(--price); }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; max-width: 640px; margin: 1.5rem auto 0; padding: 0 1rem; }
+    .tab {
+      flex: 1; padding: 0.6rem; text-align: center; font-size: 0.9rem;
+      font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent;
+      color: var(--text-dim); transition: all 0.2s;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab:hover { color: var(--text); }
+
+    /* ── Search (shopping/blog tabs) ── */
+    .search-area { max-width: 640px; margin: 1.5rem auto 0; padding: 0 1rem; }
+    .search-box { display: flex; gap: 0.5rem; }
+    .search-box input {
+      flex: 1; padding: 0.75rem 1rem; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--surface); color: var(--text);
+      font-size: 1rem; outline: none; transition: border-color 0.2s;
+    }
+    .search-box input:focus { border-color: var(--accent); }
+    .btn {
+      padding: 0.75rem 1.5rem; background: var(--accent); color: #fff;
+      border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; transition: background 0.2s; white-space: nowrap;
+    }
+    .btn:hover { background: var(--accent-dim); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-outline {
+      background: transparent; border: 1px solid var(--accent); color: var(--accent);
+    }
+    .btn-outline:hover { background: var(--accent); color: #fff; }
+    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; }
+
+    .sort-bar {
+      max-width: 1200px; margin: 1rem auto 0; padding: 0 1rem;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .sort-bar .count { font-size: 0.85rem; color: var(--text-dim); }
+    .sort-bar select {
+      padding: 0.4rem 0.6rem; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem;
+    }
+
+    /* ── Crawl area (crawl tab) ── */
+    .crawl-area { max-width: 640px; margin: 1.5rem auto 0; padding: 0 1rem; }
+    .crawl-area textarea {
+      width: 100%; min-height: 120px; padding: 0.75rem 1rem; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--surface); color: var(--text);
+      font-size: 0.85rem; outline: none; resize: vertical; font-family: monospace;
+      line-height: 1.6;
+    }
+    .crawl-area textarea:focus { border-color: var(--accent); }
+    .crawl-area textarea::placeholder { color: var(--text-dim); }
+    .crawl-actions {
+      display: flex; gap: 0.5rem; margin-top: 0.75rem; align-items: center;
+    }
+    .crawl-hint { font-size: 0.75rem; color: var(--text-dim); margin-left: auto; }
+    .rate-badge {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      font-size: 0.7rem; color: var(--warn); background: rgba(240,160,48,0.1);
+      padding: 0.2rem 0.5rem; border-radius: 4px;
+    }
+
+    /* ── Progress bar ── */
+    .progress-bar {
+      max-width: 1200px; margin: 1rem auto 0; padding: 0 1rem; display: none;
+    }
+    .progress-bar.show { display: block; }
+    .progress-track {
+      height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; background: var(--accent); border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .progress-text {
+      font-size: 0.75rem; color: var(--text-dim); margin-top: 0.3rem;
+      display: flex; justify-content: space-between;
+    }
+
+    /* ── Results ── */
+    .results { max-width: 1200px; margin: 1rem auto 3rem; padding: 0 1rem; }
+
+    /* Shopping */
+    .shop-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem;
+    }
+    .shop-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden; transition: transform 0.15s, border-color 0.15s;
+      cursor: pointer; text-decoration: none; color: inherit; display: block;
+    }
+    .shop-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .shop-card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #222; }
+    .shop-card .info { padding: 0.8rem 1rem; }
+    .shop-card .title {
+      font-size: 0.9rem; font-weight: 500; line-height: 1.4;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .shop-card .meta { margin-top: 0.5rem; display: flex; justify-content: space-between; align-items: baseline; }
+    .shop-card .price-text { font-size: 1.1rem; font-weight: 700; color: var(--price); }
+    .shop-card .mall {
+      font-size: 0.75rem; color: var(--text-dim); background: var(--tag-bg);
+      padding: 0.15rem 0.5rem; border-radius: 4px;
+    }
+    .shop-card .tags { margin-top: 0.4rem; display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .shop-card .tag {
+      font-size: 0.7rem; color: var(--text-dim); background: var(--tag-bg);
+      padding: 0.1rem 0.4rem; border-radius: 3px;
+    }
+
+    /* Blog */
+    .blog-list { display: flex; flex-direction: column; gap: 0.8rem; }
+    .blog-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1rem 1.2rem; cursor: pointer; transition: border-color 0.15s;
+    }
+    .blog-card:hover { border-color: var(--accent); }
+    .blog-card .blog-title { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; }
+    .blog-card .blog-desc {
+      font-size: 0.85rem; color: var(--text-dim); line-height: 1.5;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .blog-card .blog-meta {
+      margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-dim);
+      display: flex; gap: 0.8rem;
+    }
+
+    /* Crawl result — blog group */
+    .blog-group {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; margin-bottom: 1rem; overflow: hidden;
+    }
+    .blog-group-header {
+      padding: 0.8rem 1rem; display: flex; justify-content: space-between;
+      align-items: center; border-bottom: 1px solid var(--border); cursor: pointer;
+    }
+    .blog-group-header:hover { background: var(--surface-hover); }
+    .blog-group-name { font-weight: 600; font-size: 0.95rem; }
+    .blog-group-count { font-size: 0.75rem; color: var(--text-dim); }
+    .blog-group-actions { display: flex; gap: 0.4rem; align-items: center; }
+    .blog-group-posts { display: none; }
+    .blog-group-posts.open { display: block; }
+    .crawl-post-item {
+      padding: 0.6rem 1rem; display: flex; align-items: center; gap: 0.6rem;
+      border-bottom: 1px solid var(--border); font-size: 0.85rem;
+    }
+    .crawl-post-item:last-child { border-bottom: none; }
+    .crawl-post-item:hover { background: var(--surface-hover); }
+    .crawl-post-item input[type="checkbox"] { accent-color: var(--accent); flex-shrink: 0; }
+    .crawl-post-title { flex: 1; cursor: pointer; }
+    .crawl-post-title:hover { color: var(--accent); }
+    .crawl-post-date { font-size: 0.7rem; color: var(--text-dim); flex-shrink: 0; }
+
+    /* Batch results */
+    .batch-result {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; margin-bottom: 0.8rem; overflow: hidden;
+    }
+    .batch-result-header {
+      padding: 0.8rem 1rem; cursor: pointer; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .batch-result-header:hover { background: var(--surface-hover); }
+    .batch-result-title { font-weight: 600; font-size: 0.9rem; }
+    .batch-result-body {
+      display: none; padding: 0 1rem 1rem; font-size: 0.85rem;
+      line-height: 1.7; color: var(--text-dim); white-space: pre-wrap;
+      max-height: 400px; overflow-y: auto;
+    }
+    .batch-result-body.open { display: block; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      z-index: 100; justify-content: center; align-items: start;
+      padding: 3rem 1rem; overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; max-width: 720px; width: 100%; padding: 2rem; position: relative;
+    }
+    .modal-close {
+      position: absolute; top: 1rem; right: 1rem; width: 32px; height: 32px;
+      border-radius: 50%; background: var(--tag-bg); border: none; color: var(--text);
+      font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .modal h2 { font-size: 1.2rem; margin-bottom: 1rem; padding-right: 2rem; }
+    .modal .content-text {
+      font-size: 0.9rem; line-height: 1.7; color: var(--text-dim);
+      white-space: pre-wrap; max-height: 60vh; overflow-y: auto;
+    }
+    .modal .content-images { display: flex; gap: 0.5rem; margin-top: 1rem; overflow-x: auto; }
+    .modal .content-images img { height: 120px; border-radius: 8px; object-fit: cover; }
+    .modal .source-link {
+      display: inline-block; margin-top: 1rem; font-size: 0.8rem;
+      color: var(--accent); text-decoration: none;
+    }
+
+    .loading, .empty { text-align: center; padding: 4rem 1rem; color: var(--text-dim); }
+    .loading::after {
+      content: ''; display: inline-block; width: 20px; height: 20px;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+      margin-left: 0.5rem; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 600px) {
+      header h1 { font-size: 1.3rem; }
+      .shop-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1><span>N</span> 검색 허브</h1>
+  <p>네이버 쇼핑 가격 비교 & 블로그 크롤링 통합 도구</p>
+  <a href="/place" style="display:inline-block;margin-top:0.6rem;padding:0.4rem 1rem;background:var(--tag-bg);color:var(--accent);border-radius:6px;font-size:0.8rem;text-decoration:none;border:1px solid var(--border)">플레이스 SEO 분석기 &rarr;</a>
+</header>
+
+<div class="api-setup">
+  <div class="api-toggle" id="apiToggle">
+    <span class="arrow" id="apiArrow">&#9654;</span>
+    <span>API 키 설정</span>
+    <span class="api-status missing" id="apiStatus">미설정</span>
+  </div>
+  <div class="api-fields" id="apiFields">
+    <input type="text" id="clientId" placeholder="NAVER_CLIENT_ID" autocomplete="off">
+    <input type="password" id="clientSecret" placeholder="NAVER_CLIENT_SECRET" autocomplete="off">
+    <div style="font-size:0.75rem; color:var(--text-dim)">
+      developers.naver.com 에서 무료 발급 (일 25,000건). 브라우저 localStorage에만 저장됩니다.
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="shopping">쇼핑</div>
+  <div class="tab" data-tab="blog">블로그 리뷰</div>
+  <div class="tab" data-tab="crawl">블로그 크롤링</div>
+</div>
+
+<!-- Shopping / Blog search -->
+<div class="search-area" id="searchArea">
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="상품명을 입력하세요 (예: 에어팟 프로)" autofocus>
+    <button class="btn" id="searchBtn">검색</button>
+  </div>
+</div>
+
+<!-- Blog crawl input -->
+<div class="crawl-area" id="crawlArea" style="display:none">
+  <textarea id="crawlUrls" placeholder="블로그 URL을 한 줄에 하나씩 입력하세요 (최대 10개)&#10;&#10;예:&#10;https://blog.naver.com/example_blog&#10;https://blog.naver.com/another_blog&#10;my_blog_id"></textarea>
+  <div class="crawl-actions">
+    <button class="btn" id="crawlListBtn">글 목록 가져오기</button>
+    <button class="btn btn-outline btn-sm" id="crawlBatchBtn" style="display:none">선택한 글 본문 크롤링</button>
+    <span class="rate-badge">&#9888; 밴 방지: 요청 간 2초 딜레이</span>
+    <span class="crawl-hint" id="crawlHint">최대 10개 블로그, 본문 20개</span>
+  </div>
+</div>
+
+<div class="sort-bar" id="sortBar" style="display:none">
+  <span class="count" id="resultCount"></span>
+  <select id="sortSelect"></select>
+</div>
+
+<div class="progress-bar" id="progressBar">
+  <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  <div class="progress-text">
+    <span id="progressLabel">준비 중...</span>
+    <span id="progressPct">0%</span>
+  </div>
+</div>
+
+<div class="results" id="results">
+  <div class="empty">검색어를 입력하거나 블로그 URL을 붙여넣어 시작하세요.</div>
+</div>
+
+<!-- Blog content modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <button class="modal-close" id="modalCloseBtn">&times;</button>
+    <h2 id="modalTitle">로딩 중...</h2>
+    <div class="content-text" id="modalText"></div>
+    <div class="content-images" id="modalImages"></div>
+    <a class="source-link" id="modalLink" href="#" target="_blank" rel="noopener">원문 보기</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  let currentTab = 'shopping';
+  let currentQuery = '';
+  let crawlData = [];  // 글 목록 조회 결과 보관
+
+  // ── API Key Management ──
+  function getApiKeys() {
+    return {
+      clientId: localStorage.getItem('naver_client_id') || '',
+      clientSecret: localStorage.getItem('naver_client_secret') || '',
+    };
+  }
+  function saveApiKeys(id, secret) {
+    localStorage.setItem('naver_client_id', id);
+    localStorage.setItem('naver_client_secret', secret);
+    updateApiStatus();
+  }
+  function updateApiStatus() {
+    const { clientId, clientSecret } = getApiKeys();
+    const s = $('apiStatus');
+    if (clientId && clientSecret) { s.textContent = '설정 완료'; s.className = 'api-status ok'; }
+    else { s.textContent = '미설정'; s.className = 'api-status missing'; }
+  }
+
+  const SORT_OPTIONS = {
+    shopping: [
+      { value: 'sim', label: '관련도순' }, { value: 'date', label: '최신순' },
+      { value: 'asc', label: '가격 낮은순' }, { value: 'dsc', label: '가격 높은순' },
+    ],
+    blog: [
+      { value: 'sim', label: '관련도순' }, { value: 'date', label: '최신순' },
+    ],
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  // ── DOM helpers (XSS-safe) ──
+  function el(tag, attrs, children) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      Object.entries(attrs).forEach(([k, v]) => {
+        if (k === 'className') node.className = v;
+        else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+        else node.setAttribute(k, v);
+      });
+    }
+    if (typeof children === 'string') node.textContent = children;
+    else if (Array.isArray(children)) children.forEach((c) => { if (c) node.appendChild(c); });
+    else if (children instanceof Node) node.appendChild(children);
+    return node;
+  }
+
+  function clearEl(id) {
+    const node = $(id);
+    while (node.firstChild) node.removeChild(node.firstChild);
+    return node;
+  }
+
+  // ── API Key UI ──
+  $('apiToggle').addEventListener('click', () => {
+    $('apiFields').classList.toggle('open');
+    $('apiArrow').classList.toggle('open');
+  });
+  $('clientId').addEventListener('input', () => saveApiKeys($('clientId').value.trim(), $('clientSecret').value.trim()));
+  $('clientSecret').addEventListener('input', () => saveApiKeys($('clientId').value.trim(), $('clientSecret').value.trim()));
+
+  (function initKeys() {
+    const { clientId, clientSecret } = getApiKeys();
+    $('clientId').value = clientId;
+    $('clientSecret').value = clientSecret;
+    updateApiStatus();
+    if (!clientId || !clientSecret) { $('apiFields').classList.add('open'); $('apiArrow').classList.add('open'); }
+  })();
+
+  // ── Events ──
+  $('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+  $('searchBtn').addEventListener('click', doSearch);
+  $('sortSelect').addEventListener('change', doSearch);
+  $('crawlListBtn').addEventListener('click', doCrawlList);
+  $('crawlBatchBtn').addEventListener('click', doCrawlBatch);
+
+  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+  $('modalCloseBtn').addEventListener('click', closeModal);
+  $('modalOverlay').addEventListener('click', (e) => { if (e.target === $('modalOverlay')) closeModal(); });
+
+  // ── Tab ──
+  function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+
+    const isCrawl = tab === 'crawl';
+    $('searchArea').style.display = isCrawl ? 'none' : '';
+    $('crawlArea').style.display = isCrawl ? '' : 'none';
+    $('sortBar').style.display = 'none';
+    $('progressBar').classList.remove('show');
+
+    if (!isCrawl) {
+      const select = clearEl('sortSelect');
+      (SORT_OPTIONS[tab] || []).forEach((o) => select.appendChild(el('option', { value: o.value }, o.label)));
+      if (currentQuery) doSearch();
+      else {
+        const r = clearEl('results');
+        r.appendChild(el('div', { className: 'empty' }, '검색어를 입력하세요.'));
+      }
+    } else {
+      if (!crawlData.length) {
+        const r = clearEl('results');
+        r.appendChild(el('div', { className: 'empty' }, '블로그 URL을 입력하고 "글 목록 가져오기"를 클릭하세요.'));
+      }
+    }
+  }
+
+  // ════════════════════════════════════════
+  // Search (shopping / blog)
+  // ════════════════════════════════════════
+  async function doSearch() {
+    const query = $('searchInput').value.trim();
+    if (!query) return;
+    currentQuery = query;
+
+    const sort = $('sortSelect').value || 'sim';
+    const results = clearEl('results');
+    $('sortBar').style.display = 'none';
+    $('searchBtn').disabled = true;
+    results.appendChild(el('div', { className: 'loading' }, '검색 중'));
+
+    try {
+      if (currentTab === 'shopping') {
+        const data = await fetchJSON('/api/shopping?q=' + enc(query) + '&display=30&sort=' + sort);
+        renderShopping(data);
+      } else {
+        const data = await fetchJSON('/api/blog?q=' + enc(query) + '&display=20&sort=' + sort);
+        renderBlogSearch(data);
+      }
+    } catch (err) {
+      clearEl('results').appendChild(el('div', { className: 'empty' }, '오류: ' + err.message));
+    } finally {
+      $('searchBtn').disabled = false;
+    }
+  }
+
+  function renderShopping(data) {
+    showSortBar(data.total);
+    const container = clearEl('results');
+    if (!data.items.length) { container.appendChild(el('div', { className: 'empty' }, '검색 결과가 없습니다.')); return; }
+
+    const grid = el('div', { className: 'shop-grid' });
+    data.items.forEach((item) => {
+      const priceStr = item.lprice ? item.lprice.toLocaleString() + '원' : '가격 미정';
+      const tags = [item.brand, item.category2, item.category3].filter(Boolean);
+      const img = el('img', { loading: 'lazy' });
+      img.src = item.image;
+      img.addEventListener('error', function () { this.style.display = 'none'; });
+
+      const metaChildren = [el('span', { className: 'price-text' }, priceStr)];
+      if (item.mallName) metaChildren.push(el('span', { className: 'mall' }, item.mallName));
+
+      grid.appendChild(el('a', { className: 'shop-card', href: item.link, target: '_blank', rel: 'noopener' }, [
+        img,
+        el('div', { className: 'info' }, [
+          el('div', { className: 'title' }, item.title),
+          el('div', { className: 'meta' }, metaChildren),
+          tags.length ? el('div', { className: 'tags' }, tags.map((t) => el('span', { className: 'tag' }, t))) : null,
+        ]),
+      ]));
+    });
+    container.appendChild(grid);
+  }
+
+  function renderBlogSearch(data) {
+    showSortBar(data.total);
+    const container = clearEl('results');
+    if (!data.items.length) { container.appendChild(el('div', { className: 'empty' }, '검색 결과가 없습니다.')); return; }
+
+    const list = el('div', { className: 'blog-list' });
+    data.items.forEach((item) => {
+      const dateStr = item.postdate ? item.postdate.slice(0,4)+'.'+item.postdate.slice(4,6)+'.'+item.postdate.slice(6,8) : '';
+      const hasContent = item.blogId && item.logNo;
+      const metaC = [el('span', {}, item.bloggername), el('span', {}, dateStr)];
+      if (hasContent) metaC.push(el('span', { style: 'color:var(--accent)' }, '본문 미리보기'));
+
+      const card = el('div', { className: 'blog-card' }, [
+        el('div', { className: 'blog-title' }, item.title),
+        el('div', { className: 'blog-desc' }, item.description),
+        el('div', { className: 'blog-meta' }, metaC),
+      ]);
+      card.addEventListener('click', () => hasContent ? openBlogModal(item.blogId, item.logNo) : window.open(item.link, '_blank'));
+      list.appendChild(card);
+    });
+    container.appendChild(list);
+  }
+
+  // ════════════════════════════════════════
+  // Blog Crawling
+  // ════════════════════════════════════════
+
+  async function doCrawlList() {
+    const raw = $('crawlUrls').value.trim();
+    if (!raw) return;
+
+    const urls = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!urls.length) return;
+
+    $('crawlListBtn').disabled = true;
+    const container = clearEl('results');
+    container.appendChild(el('div', { className: 'loading' }, '글 목록을 가져오는 중 (블로그당 1.5초 딜레이)'));
+
+    showProgress(0, urls.length, '블로그 글 목록 조회 중...');
+
+    try {
+      const resp = await fetch('/api/blog/list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls: urls }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || '요청 실패');
+      }
+      const data = await resp.json();
+      crawlData = data.blogs || [];
+      hideProgress();
+      renderCrawlList(crawlData);
+    } catch (err) {
+      hideProgress();
+      clearEl('results').appendChild(el('div', { className: 'empty' }, '오류: ' + err.message));
+    } finally {
+      $('crawlListBtn').disabled = false;
+    }
+  }
+
+  function renderCrawlList(blogs) {
+    const container = clearEl('results');
+
+    let totalPosts = 0;
+    blogs.forEach((b) => { totalPosts += (b.posts || []).length; });
+
+    if (!totalPosts) {
+      container.appendChild(el('div', { className: 'empty' }, 'RSS를 제공하지 않는 블로그이거나, 글이 없습니다.'));
+      $('crawlBatchBtn').style.display = 'none';
+      return;
+    }
+
+    // Show batch button
+    $('crawlBatchBtn').style.display = '';
+
+    // Summary bar
+    const summary = el('div', { style: 'margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center' }, [
+      el('span', { style: 'font-size:0.85rem; color:var(--text-dim)' },
+        blogs.length + '개 블로그, 총 ' + totalPosts + '개 글'),
+      el('button', { className: 'btn btn-outline btn-sm', onclick: toggleSelectAll }, '전체 선택/해제'),
+    ]);
+    container.appendChild(summary);
+
+    blogs.forEach((blog) => {
+      if (!blog.posts || !blog.posts.length) return;
+
+      const group = el('div', { className: 'blog-group' });
+      const postsContainer = el('div', { className: 'blog-group-posts open' });
+
+      const header = el('div', { className: 'blog-group-header' }, [
+        el('div', {}, [
+          el('span', { className: 'blog-group-name' }, blog.blogName || blog.blogId),
+          el('span', { className: 'blog-group-count', style: 'margin-left:0.5rem' }, blog.posts.length + '개 글'),
+        ]),
+      ]);
+      header.addEventListener('click', () => postsContainer.classList.toggle('open'));
+
+      blog.posts.forEach((post) => {
+        const cb = el('input', { type: 'checkbox' });
+        cb.checked = true;
+        cb.dataset.blogId = post.blogId;
+        cb.dataset.logNo = post.logNo;
+
+        const titleSpan = el('span', { className: 'crawl-post-title' }, post.title || '(제목 없음)');
+        titleSpan.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openBlogModal(post.blogId, post.logNo);
+        });
+
+        const dateStr = post.pubDate ? post.pubDate.slice(0, 16) : '';
+
+        postsContainer.appendChild(el('div', { className: 'crawl-post-item' }, [
+          cb, titleSpan, el('span', { className: 'crawl-post-date' }, dateStr),
+        ]));
+      });
+
+      group.appendChild(header);
+      group.appendChild(postsContainer);
+      container.appendChild(group);
+    });
+  }
+
+  function toggleSelectAll() {
+    const boxes = document.querySelectorAll('.crawl-post-item input[type="checkbox"]');
+    const allChecked = Array.from(boxes).every((cb) => cb.checked);
+    boxes.forEach((cb) => { cb.checked = !allChecked; });
+  }
+
+  function getSelectedPosts() {
+    const boxes = document.querySelectorAll('.crawl-post-item input[type="checkbox"]:checked');
+    return Array.from(boxes).map((cb) => ({
+      blogId: cb.dataset.blogId,
+      logNo: cb.dataset.logNo,
+    }));
+  }
+
+  async function doCrawlBatch() {
+    const posts = getSelectedPosts();
+    if (!posts.length) { alert('크롤링할 글을 선택해주세요.'); return; }
+    if (posts.length > 20) { alert('한 번에 최대 20개까지 크롤링할 수 있습니다. 선택을 줄여주세요.'); return; }
+
+    $('crawlBatchBtn').disabled = true;
+    $('crawlListBtn').disabled = true;
+
+    const estimatedTime = posts.length * 2;
+    showProgress(0, posts.length,
+      '본문 크롤링 중... (예상 ' + estimatedTime + '초, 밴 방지 딜레이 적용)');
+
+    // Simulate progress (actual delay is server-side)
+    let fakeProgress = 0;
+    const progressInterval = setInterval(() => {
+      fakeProgress = Math.min(fakeProgress + 1, posts.length - 1);
+      updateProgress(fakeProgress, posts.length, '크롤링 중... ' + fakeProgress + '/' + posts.length);
+    }, 2200);
+
+    try {
+      const resp = await fetch('/api/blog/batch-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts: posts }),
+      });
+      clearInterval(progressInterval);
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || '요청 실패');
+      }
+      const data = await resp.json();
+      updateProgress(posts.length, posts.length, '완료!');
+      setTimeout(() => hideProgress(), 1000);
+      renderBatchResults(data.results || []);
+    } catch (err) {
+      clearInterval(progressInterval);
+      hideProgress();
+      clearEl('results').appendChild(el('div', { className: 'empty' }, '오류: ' + err.message));
+    } finally {
+      $('crawlBatchBtn').disabled = false;
+      $('crawlListBtn').disabled = false;
+    }
+  }
+
+  function renderBatchResults(results) {
+    const container = clearEl('results');
+
+    const successCount = results.filter((r) => !r.error).length;
+    container.appendChild(el('div', { style: 'margin-bottom:1rem; font-size:0.85rem; color:var(--text-dim)' },
+      '크롤링 완료: ' + successCount + '/' + results.length + '개 성공'));
+
+    // Back button
+    container.appendChild(el('button', {
+      className: 'btn btn-outline btn-sm',
+      style: 'margin-bottom:1rem',
+      onclick: () => renderCrawlList(crawlData),
+    }, '글 목록으로 돌아가기'));
+
+    results.forEach((r) => {
+      const result = el('div', { className: 'batch-result' });
+
+      // Body: text + images
+      const body = el('div', { className: 'batch-result-body' });
+      if (r.error) {
+        body.textContent = '오류: ' + r.error;
+      } else {
+        const textNode = el('div');
+        textNode.textContent = r.text || '본문 없음';
+        body.appendChild(textNode);
+
+        if (r.images && r.images.length) {
+          const gallery = el('div', { className: 'content-images', style: 'margin-top:0.8rem' });
+          r.images.forEach((src) => gallery.appendChild(makeProxiedImg(src)));
+          body.appendChild(gallery);
+        }
+      }
+
+      const imgCount = (r.images || []).length;
+      const infoText = r.error
+        ? '실패'
+        : (r.text || '').length + '자' + (imgCount ? ' / ' + imgCount + '장' : '');
+      const infoStyle = r.error ? 'font-size:0.75rem; color:var(--price)' : 'font-size:0.75rem; color:var(--accent)';
+
+      const header = el('div', { className: 'batch-result-header' }, [
+        el('span', { className: 'batch-result-title' }, r.title || r.url || '(제목 없음)'),
+        el('span', { style: infoStyle }, infoText),
+      ]);
+      header.addEventListener('click', () => body.classList.toggle('open'));
+
+      result.appendChild(header);
+      result.appendChild(body);
+      container.appendChild(result);
+    });
+  }
+
+  // ── Progress ──
+  function showProgress(current, total, label) {
+    $('progressBar').classList.add('show');
+    updateProgress(current, total, label);
+  }
+  function updateProgress(current, total, label) {
+    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    $('progressFill').style.width = pct + '%';
+    $('progressLabel').textContent = label || '';
+    $('progressPct').textContent = pct + '%';
+  }
+  function hideProgress() { $('progressBar').classList.remove('show'); }
+
+  // ── Blog Modal ──
+  async function openBlogModal(blogId, logNo) {
+    $('modalOverlay').classList.add('open');
+    $('modalTitle').textContent = '본문 로딩 중...';
+    $('modalText').textContent = '';
+    clearEl('modalImages');
+    try {
+      const data = await fetchJSON('/api/blog/content?blogId=' + enc(blogId) + '&logNo=' + enc(logNo), false);
+      $('modalTitle').textContent = data.title || '(제목 없음)';
+      $('modalText').textContent = data.text || '본문을 불러올 수 없습니다.';
+      $('modalLink').href = data.url || '#';
+      if (data.images && data.images.length) {
+        const ic = $('modalImages');
+        data.images.forEach((src) => ic.appendChild(makeProxiedImg(src)));
+      }
+    } catch (err) {
+      $('modalTitle').textContent = '오류';
+      $('modalText').textContent = err.message;
+    }
+  }
+  function closeModal() { $('modalOverlay').classList.remove('open'); }
+
+  // ── Helpers ──
+  function showSortBar(total) {
+    $('sortBar').style.display = 'flex';
+    $('resultCount').textContent = '총 ' + total.toLocaleString() + '건';
+  }
+
+  async function fetchJSON(url, withApiKeys) {
+    const opts = {};
+    if (withApiKeys !== false) {
+      const { clientId, clientSecret } = getApiKeys();
+      if (!clientId || !clientSecret) throw new Error('API 키를 먼저 설정해주세요 (상단 "API 키 설정" 클릭)');
+      opts.headers = { 'X-Naver-Client-Id': clientId, 'X-Naver-Client-Secret': clientSecret };
+    }
+    const resp = await fetch(url, opts);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || '요청 실패');
+    }
+    return resp.json();
+  }
+
+  function enc(s) { return encodeURIComponent(s); }
+
+  function proxyImg(src) {
+    return '/api/image-proxy?url=' + enc(src);
+  }
+
+  function makeProxiedImg(src) {
+    const img = el('img', { loading: 'lazy' });
+    img.src = proxyImg(src);
+    img.addEventListener('error', function () { this.style.display = 'none'; });
+    return img;
+  }
+
+  switchTab('shopping');
+})();
+</script>
+</body>
+</html>

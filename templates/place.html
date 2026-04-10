@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>플레이스 SEO 분석기 — 네이버 검색 허브</title>
+  <style>
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface-hover: #22263a;
+      --border: #2a2e3e; --text: #e4e6ed; --text-dim: #8b8fa3;
+      --accent: #03c75a; --accent-dim: #02a34a; --price: #ff6b6b;
+      --tag-bg: #252a3a; --warn: #f0a030; --blue: #4da6ff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    header { text-align: center; padding: 2.5rem 1rem 1.5rem; border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 1.6rem; font-weight: 700; }
+    header h1 span { color: var(--accent); }
+    header p { color: var(--text-dim); margin-top: 0.3rem; font-size: 0.85rem; }
+    header a { display: inline-block; margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-dim); text-decoration: none; }
+    header a:hover { color: var(--text); }
+
+    .api-bar { max-width: 700px; margin: 1rem auto; padding: 0 1rem; display: flex; gap: 0.4rem; }
+    .api-bar input { flex: 1; padding: 0.4rem 0.6rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.8rem; font-family: monospace; outline: none; }
+    .api-bar input:focus { border-color: var(--accent); }
+
+    .search-area { max-width: 700px; margin: 1rem auto; padding: 0 1rem; }
+    .search-box { display: flex; gap: 0.5rem; }
+    .search-box input { flex: 1; padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 1rem; outline: none; }
+    .search-box input:focus { border-color: var(--accent); }
+    .btn { padding: 0.6rem 1.2rem; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .btn:hover { background: var(--accent-dim); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-sm { padding: 0.35rem 0.7rem; font-size: 0.8rem; border-radius: 6px; }
+    .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+    .btn-outline:hover { background: var(--accent); color: #fff; }
+    .btn-blue { background: var(--blue); }
+    .btn-blue:hover { background: #3d96ef; }
+
+    .results { max-width: 900px; margin: 1.5rem auto 3rem; padding: 0 1rem; }
+
+    /* Place cards */
+    .place-list { display: flex; flex-direction: column; gap: 0.6rem; }
+    .place-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; cursor: pointer; transition: border-color 0.15s; }
+    .place-card:hover { border-color: var(--accent); }
+    .place-card.no-id { cursor: default; opacity: 0.6; }
+    .place-card.no-id:hover { border-color: var(--border); }
+    .place-name { font-size: 1rem; font-weight: 600; }
+    .place-meta { margin-top: 0.3rem; font-size: 0.8rem; color: var(--text-dim); display: flex; gap: 0.8rem; flex-wrap: wrap; }
+
+    /* SEO Report */
+    .seo-report { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .seo-header { padding: 1.2rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .seo-grade { font-size: 2.5rem; font-weight: 800; }
+    .seo-grade.A { color: var(--accent); } .seo-grade.B { color: var(--blue); }
+    .seo-grade.C { color: var(--warn); } .seo-grade.D { color: var(--price); }
+    .seo-pct { font-size: 0.9rem; color: var(--text-dim); }
+    .seo-cats { display: flex; gap: 1rem; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .seo-cat { flex: 1; min-width: 120px; text-align: center; }
+    .seo-cat-label { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.3rem; }
+    .seo-cat-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .seo-cat-fill { height: 100%; border-radius: 3px; }
+    .seo-cat-pct { font-size: 0.8rem; font-weight: 600; margin-top: 0.2rem; }
+    .seo-checks { padding: 0; }
+    .checks-label { padding: 0.5rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #a78bfa; background: rgba(124,58,237,0.08); border-bottom: 1px solid var(--border); letter-spacing: 0.03em; }
+    .seo-check { padding: 0.6rem 1.5rem; display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; border-bottom: 1px solid var(--border); }
+    .seo-check:last-child { border-bottom: none; }
+    .seo-check.premium { background: rgba(124,58,237,0.04); }
+    .seo-check .icon { width: 20px; text-align: center; flex-shrink: 0; }
+    .seo-check .pass { color: var(--accent); }
+    .seo-check .fail { color: var(--price); }
+    .seo-check .tip { color: var(--text-dim); font-size: 0.75rem; margin-left: auto; max-width: 40%; text-align: right; }
+    .seo-check .cat-badge { font-size: 0.65rem; padding: 0.1rem 0.4rem; border-radius: 3px; background: var(--tag-bg); color: var(--text-dim); margin-left: 0.3rem; }
+    .pro-badge { font-size: 0.6rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 3px; background: linear-gradient(135deg,#7c3aed,#a855f7); color: #fff; letter-spacing: 0.05em; flex-shrink: 0; }
+
+    /* Place Detail Info */
+    .place-info { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem 1.5rem; margin-bottom: 1rem; }
+    .place-info h2 { font-size: 1.3rem; margin-bottom: 0.8rem; }
+    .info-grid { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 1rem; font-size: 0.85rem; }
+    .info-label { color: var(--text-dim); }
+    .info-images { display: flex; gap: 0.5rem; margin-top: 0.8rem; overflow-x: auto; padding-bottom: 0.3rem; }
+    .info-images img { height: 100px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+
+    /* Blog Draft */
+    .draft-area { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem 1.5rem; margin-top: 1rem; }
+    .draft-area h3 { font-size: 1rem; margin-bottom: 0.8rem; }
+    .draft-body { font-size: 0.85rem; line-height: 1.7; color: var(--text-dim); white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+    .draft-prompt { margin-top: 1rem; padding: 0.8rem; background: var(--tag-bg); border-radius: 8px; font-size: 0.8rem; line-height: 1.5; color: var(--text-dim); white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+    .copy-btn { margin-top: 0.5rem; }
+
+    /* Direct ID input parsed badge */
+    .parsed-id { margin-top: 0.3rem; font-size: 0.75rem; color: var(--accent); min-height: 1rem; }
+
+    .loading, .empty { text-align: center; padding: 3rem 1rem; color: var(--text-dim); }
+    .loading::after { content: ''; display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; margin-left: 0.5rem; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Actions bar */
+    .actions { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+
+    @media (max-width: 600px) { header h1 { font-size: 1.2rem; } .seo-cats { flex-direction: column; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1><span>N</span> 플레이스 SEO 분석기</h1>
+  <p>플레이스 정보 조회 / SEO-AEO-GEO 최적화 분석 / 블로그 초안 생성</p>
+  <a href="/">&larr; 검색 허브로 돌아가기</a>
+</header>
+
+<!-- API 키 불필요 — 네이버 통합검색 파싱 방식 -->
+
+<div class="search-area">
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="업체명 검색 (예: 스타벅스 강남역점, 바리에가타)" autofocus>
+    <button class="btn" id="searchBtn">검색</button>
+  </div>
+  <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)">
+    또는 플레이스 ID/URL 입력:
+    <input type="text" id="directId"
+      placeholder="플레이스 ID 또는 네이버 플레이스 URL 입력"
+      style="width:320px;padding:0.3rem 0.5rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.75rem;outline:none">
+    <button class="btn btn-sm btn-outline" id="directBtn">바로 분석</button>
+    <div class="parsed-id" id="parsedIdBadge"></div>
+  </div>
+</div>
+
+<div class="results" id="results">
+  <div class="empty">장소를 검색하거나 플레이스 ID를 입력하세요.</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+
+  // DOM helpers
+  function el(tag, attrs, children) {
+    const node = document.createElement(tag);
+    if (attrs) Object.entries(attrs).forEach(([k, v]) => {
+      if (k === 'className') node.className = v;
+      else if (k.startsWith('on')) node.addEventListener(k.slice(2).toLowerCase(), v);
+      else node.setAttribute(k, v);
+    });
+    if (typeof children === 'string') node.textContent = children;
+    else if (Array.isArray(children)) children.forEach(c => { if (c) node.appendChild(c); });
+    else if (children instanceof Node) node.appendChild(children);
+    return node;
+  }
+  function clearEl(id) { const n = $(id); if (!n) return null; while (n.firstChild) n.removeChild(n.firstChild); return n; }
+  function enc(s) { return encodeURIComponent(s); }
+  function proxyImg(src) { return '/api/image-proxy?url=' + enc(src); }
+  function safeUrl(url) {
+    if (typeof url === 'string' && url.startsWith('https://')) return url;
+    return '#';
+  }
+
+  // Parse place ID from raw input (bare number or URL)
+  function parsePlaceId(input) {
+    if (!input) return '';
+    const urlMatch = input.match(/place\/(\d+)/);
+    if (urlMatch) return urlMatch[1];
+    if (/^\d+$/.test(input)) return input;
+    return '';
+  }
+
+  // Live-parse direct input and show badge
+  $('directId').addEventListener('input', () => {
+    const pid = parsePlaceId($('directId').value.trim());
+    const badge = $('parsedIdBadge');
+    badge.textContent = pid ? 'ID: ' + pid : '';
+  });
+
+  // Events
+  $('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  $('searchBtn').addEventListener('click', doSearch);
+  $('directId').addEventListener('keydown', e => { if (e.key === 'Enter') handleDirectInput(); });
+  $('directBtn').addEventListener('click', handleDirectInput);
+
+  function handleDirectInput() {
+    const input = $('directId').value.trim();
+    if (!input) return;
+    const pid = parsePlaceId(input);
+    if (pid) {
+      doSeoAnalysis(pid);
+    } else {
+      alert('유효한 플레이스 ID 또는 URL을 입력하세요.\n예: 31863524 또는 https://map.naver.com/p/entry/place/31863524');
+    }
+  }
+
+  // Search
+  let lastSearchQuery = '';
+  async function doSearch(forcedQuery) {
+    const q = forcedQuery || $('searchInput').value.trim();
+    if (!q) return;
+    lastSearchQuery = q;
+    $('searchInput').value = q;
+
+    const container = clearEl('results');
+    container.appendChild(el('div', { className: 'loading' }, '검색 중'));
+
+    try {
+      const resp = await fetch('/api/place/search?q=' + enc(q) + '&display=10', {});
+      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.detail || e.message || resp.statusText); }
+      const data = await resp.json();
+      renderSearchResults(data);
+    } catch (err) {
+      clearEl('results').appendChild(el('div', { className: 'empty' }, '오류가 발생했습니다. 잠시 후 다시 시도해주세요.'));
+    }
+  }
+
+  function renderSearchResults(data) {
+    const container = clearEl('results');
+    if (!data.items || !data.items.length) {
+      container.appendChild(el('div', { className: 'empty' }, '검색 결과가 없습니다.'));
+      return;
+    }
+    container.appendChild(el('div', { style: 'font-size:0.85rem;color:var(--text-dim);margin-bottom:0.8rem' },
+      (Number(data.total) || 0) + '건 표시 — 업체를 클릭하면 SEO 분석'));
+
+    const list = el('div', { className: 'place-list' });
+    data.items.forEach(item => {
+      // link에서 placeId 추출
+      const pidMatch = (item.link || '').match(/place\/(\d+)/);
+      const placeId = pidMatch ? pidMatch[1] : '';
+
+      const cardClass = placeId ? 'place-card' : 'place-card no-id';
+      const card = el('div', { className: cardClass }, [
+        el('div', { className: 'place-name' }, item.title),
+        el('div', { className: 'place-meta' }, [
+          el('span', {}, item.category || ''),
+          el('span', {}, item.roadAddress || item.address || ''),
+          el('span', {}, item.telephone || ''),
+          placeId
+            ? el('span', { style: 'color:var(--accent)' }, 'ID: ' + placeId)
+            : el('span', { style: 'color:var(--price)' }, 'ID 없음 — 분석 불가'),
+        ]),
+      ]);
+
+      if (placeId) {
+        card.addEventListener('click', () => doSeoAnalysis(placeId));
+      }
+      list.appendChild(card);
+    });
+    container.appendChild(list);
+  }
+
+  // SEO Analysis — placeId 기반
+  let lastPlaceId = '';
+  async function doSeoAnalysis(placeId) {
+    lastPlaceId = placeId;
+
+    const container = clearEl('results');
+    container.appendChild(el('div', { className: 'loading' }, 'SEO 분석 중'));
+
+    try {
+      const resp = await fetch('/api/place/seo?place_id=' + enc(placeId), {});
+      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.detail || e.message || resp.statusText); }
+      const data = await resp.json();
+      renderSeoReport(data.place, data.analysis, placeId);
+    } catch (err) {
+      clearEl('results').appendChild(el('div', { className: 'empty' }, '오류가 발생했습니다. 잠시 후 다시 시도해주세요.'));
+    }
+  }
+
+  function renderSeoReport(place, analysis, placeId) {
+    const container = clearEl('results');
+
+    // Back + Actions
+    const actions = el('div', { className: 'actions' }, [
+      lastSearchQuery
+        ? el('button', { className: 'btn btn-sm btn-outline', onclick: () => doSearch(lastSearchQuery) }, '검색 결과로')
+        : null,
+      el('button', { className: 'btn btn-sm btn-blue', onclick: () => doBlogDraft(placeId) }, '블로그 초안 생성'),
+    ]);
+    container.appendChild(actions);
+
+    // Place info card
+    const infoCard = el('div', { className: 'place-info' }, [
+      el('h2', {}, place.name || '(이름 없음)'),
+      el('div', { className: 'info-grid' }, [
+        el('span', { className: 'info-label' }, '카테고리'), el('span', {}, place.category || '-'),
+        el('span', { className: 'info-label' }, '주소'), el('span', {}, place.roadAddress || '-'),
+        el('span', { className: 'info-label' }, '전화'), el('span', {}, place.phone || '-'),
+        el('span', { className: 'info-label' }, '방문자 리뷰'), el('span', {}, (place.visitorReviewCount || 0).toLocaleString() + '건'),
+        el('span', { className: 'info-label' }, '방문자 평점'), el('span', {}, place.visitorReviewScore ? '★ ' + Number(place.visitorReviewScore).toFixed(2) : '-'),
+        el('span', { className: 'info-label' }, '블로그 리뷰'), el('span', {}, (place.blogReviewCount || 0).toLocaleString() + '건'),
+        el('span', { className: 'info-label' }, '네이버 예약'), el('span', {}, place.hasBooking ? '✓ 연동' : '미연동'),
+        el('span', { className: 'info-label' }, '쿠폰'), el('span', {}, place.hasCoupon ? '✓ 등록됨' : '미등록'),
+        el('span', { className: 'info-label' }, '이미지 수'), el('span', {}, (place.imageCount || (place.images ? place.images.length : 0)) + '장'),
+        el('span', { className: 'info-label' }, '메뉴'), el('span', {}, (place.menuInfo || []).length + '개 등록'),
+        el('span', { className: 'info-label' }, '플레이스'), el('span', {},
+          place.placeUrl ? el('a', { href: safeUrl(place.placeUrl), target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--accent);font-size:0.8rem' }, '열기') : '-'),
+      ]),
+    ]);
+
+    // Description
+    if (place.description) {
+      infoCard.appendChild(el('div', {
+        style: 'margin-top:0.8rem;font-size:0.85rem;color:var(--text-dim);line-height:1.6;padding:0.8rem;background:var(--tag-bg);border-radius:8px'
+      }, place.description));
+    }
+
+    // Keywords
+    if (place.keywords && place.keywords.length) {
+      const kwDiv = el('div', { style: 'margin-top:0.8rem' });
+      kwDiv.appendChild(el('div', { style: 'font-size:0.75rem;color:var(--text-dim);margin-bottom:0.4rem;font-weight:600' }, '방문자 키워드'));
+      const kwList = el('div', { style: 'display:flex;flex-wrap:wrap;gap:0.3rem' });
+      place.keywords.forEach(kw => {
+        const badge = el('span', {
+          style: 'font-size:0.75rem;padding:0.2rem 0.5rem;background:var(--tag-bg);border-radius:4px;color:var(--text)'
+        }, kw.keyword + (kw.count > 0 ? ' (' + kw.count + ')' : ''));
+        kwList.appendChild(badge);
+      });
+      kwDiv.appendChild(kwList);
+      infoCard.appendChild(kwDiv);
+    }
+
+    // Place images
+    if (place.images && place.images.length) {
+      infoCard.appendChild(el('div', { style: 'font-size:0.75rem;color:var(--text-dim);margin-top:0.8rem;margin-bottom:0.3rem;font-weight:600' }, '플레이스 사진 (' + place.images.length + '장)'));
+      const gallery = el('div', { className: 'info-images' });
+      place.images.slice(0, 10).forEach(src => {
+        const img = el('img', { loading: 'lazy' });
+        img.src = proxyImg(src);
+        img.addEventListener('error', function () { this.style.display = 'none'; });
+        gallery.appendChild(img);
+      });
+      infoCard.appendChild(gallery);
+    }
+
+    // Blog reviews list
+    if (place.blogReviews && place.blogReviews.length) {
+      const reviewsDiv = el('div', { style: 'margin-top:0.8rem;font-size:0.8rem' });
+      reviewsDiv.appendChild(el('div', { style: 'font-weight:600;margin-bottom:0.4rem;color:var(--text-dim)' }, '관련 블로그 리뷰 (상위 ' + Math.min(place.blogReviews.length, 5) + '건)'));
+      place.blogReviews.slice(0, 5).forEach(r => {
+        const item = el('div', { style: 'padding:0.3rem 0;border-bottom:1px solid var(--border)' }, [
+          el('span', { style: 'color:var(--accent);margin-right:0.4rem' }, r.bloggername || ''),
+          el('span', {}, r.title || ''),
+        ]);
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => { const u = safeUrl(r.link); if (u !== '#') window.open(u, '_blank', 'noopener,noreferrer'); });
+        reviewsDiv.appendChild(item);
+      });
+      infoCard.appendChild(reviewsDiv);
+    }
+    container.appendChild(infoCard);
+
+    // SEO Report
+    const report = el('div', { className: 'seo-report' });
+
+    // Header: grade + score
+    const gradeClass = 'seo-grade ' + (['A','B','C','D'].includes(analysis.grade) ? analysis.grade : 'D');
+    report.appendChild(el('div', { className: 'seo-header' }, [
+      el('div', {}, [
+        el('div', { className: gradeClass }, analysis.grade),
+        el('div', { className: 'seo-pct' }, analysis.pct + '% (' + analysis.totalScore + '/' + analysis.maxScore + ')'),
+      ]),
+      el('div', { style: 'text-align:right' }, [
+        el('div', { style: 'font-size:1.1rem;font-weight:600' }, 'SEO / AEO / GEO'),
+        el('div', { style: 'font-size:0.8rem;color:var(--text-dim)' }, '최적화 분석 리포트'),
+      ]),
+    ]));
+
+    // Category bars
+    const catsDiv = el('div', { className: 'seo-cats' });
+    const catColors = { SEO: 'var(--accent)', AEO: 'var(--blue)', GEO: 'var(--warn)' };
+    Object.entries(analysis.categoryScores || {}).forEach(([cat, data]) => {
+      const pct = Math.min(100, Math.max(0, parseInt(data.pct, 10) || 0));
+      const color = Object.prototype.hasOwnProperty.call(catColors, cat) ? catColors[cat] : 'var(--accent)';
+      const textColor = Object.prototype.hasOwnProperty.call(catColors, cat) ? catColors[cat] : 'var(--text)';
+      catsDiv.appendChild(el('div', { className: 'seo-cat' }, [
+        el('div', { className: 'seo-cat-label' }, cat),
+        el('div', { className: 'seo-cat-bar' }, [
+          el('div', { className: 'seo-cat-fill', style: 'width:' + pct + '%;background:' + color }),
+        ]),
+        el('div', { className: 'seo-cat-pct', style: 'color:' + textColor }, pct + '%'),
+      ]));
+    });
+    report.appendChild(catsDiv);
+
+    // Individual checks — 기본 / PRO 구분 렌더링
+    const basicChecks = (analysis.checks || []).filter(c => !c.premium);
+    const premiumChecks = (analysis.checks || []).filter(c => c.premium);
+
+    function renderCheckList(items, label) {
+      const div = el('div', { className: 'seo-checks' });
+      if (label) div.appendChild(el('div', { className: 'checks-label' }, label));
+      items.forEach(c => {
+        const icon = c.passed ? '\u2713' : '\u2717';
+        const iconClass = c.passed ? 'pass' : 'fail';
+        div.appendChild(el('div', { className: 'seo-check' + (c.premium ? ' premium' : '') }, [
+          el('span', { className: 'icon ' + iconClass }, icon),
+          el('span', {}, c.name),
+          c.premium ? el('span', { className: 'pro-badge' }, 'PRO') : null,
+          el('span', { className: 'cat-badge' }, c.category),
+          !c.passed ? el('span', { className: 'tip' }, c.tip) : null,
+        ]));
+      });
+      return div;
+    }
+
+    report.appendChild(renderCheckList(basicChecks, null));
+    if (premiumChecks.length) {
+      report.appendChild(renderCheckList(premiumChecks, '심층 분석 (Premium)'));
+    }
+    container.appendChild(report);
+  }
+
+  async function doBlogDraft(placeId) {
+    const container = clearEl('results');
+    container.appendChild(el('div', { className: 'loading' }, '블로그 초안 생성 중'));
+
+    try {
+      const resp = await fetch('/api/place/blog-draft?place_id=' + enc(placeId), {});
+      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.detail || e.message || resp.statusText); }
+      const data = await resp.json();
+      renderBlogDraft(data, placeId);
+    } catch (err) {
+      clearEl('results').appendChild(el('div', { className: 'empty' }, '오류가 발생했습니다. 잠시 후 다시 시도해주세요.'));
+    }
+  }
+
+  function renderBlogDraft(data, placeId) {
+    const container = clearEl('results');
+
+    const actions = el('div', { className: 'actions' }, [
+      el('button', { className: 'btn btn-sm btn-outline', onclick: () => doSeoAnalysis(placeId) }, 'SEO 분석으로'),
+    ]);
+    container.appendChild(actions);
+
+    // Draft body
+    const draftCard = el('div', { className: 'draft-area' }, [
+      el('h3', {}, data.title || '블로그 초안'),
+      el('div', { className: 'draft-body' }),
+    ]);
+    draftCard.querySelector('.draft-body').textContent = data.body || '';
+
+    // Images from place
+    if (data.images && data.images.length) {
+      const gallery = el('div', { className: 'info-images', style: 'margin-top:0.8rem' });
+      data.images.slice(0, 10).forEach(src => {
+        const img = el('img', { loading: 'lazy' });
+        img.src = proxyImg(src);
+        img.addEventListener('error', function () { this.style.display = 'none'; });
+        gallery.appendChild(img);
+      });
+      draftCard.appendChild(el('div', { style: 'font-size:0.8rem;color:var(--text-dim);margin-top:0.8rem' }, '플레이스 사진 (' + data.images.length + '장) — 블로그에 활용 가능'));
+      draftCard.appendChild(gallery);
+    }
+    container.appendChild(draftCard);
+
+    // AI Prompt
+    const promptCard = el('div', { className: 'draft-area', style: 'margin-top:1rem' }, [
+      el('h3', {}, 'AI 블로그 작성 프롬프트'),
+      el('div', { style: 'font-size:0.75rem;color:var(--text-dim);margin-bottom:0.5rem' },
+        'ChatGPT, Claude 등에 아래 프롬프트를 붙여넣으면 블로그 글이 생성됩니다.'),
+      el('div', { className: 'draft-prompt' }),
+      el('button', { className: 'btn btn-sm copy-btn', onclick: () => copyToClipboard(data.aiPrompt || '') }, '프롬프트 복사'),
+    ]);
+    promptCard.querySelector('.draft-prompt').textContent = data.aiPrompt || '';
+    container.appendChild(promptCard);
+
+    // Place data summary
+    const pd = data.placeData || {};
+    const summaryCard = el('div', { className: 'draft-area', style: 'margin-top:1rem' }, [
+      el('h3', {}, '크롤링된 플레이스 데이터'),
+      el('div', { className: 'info-grid', style: 'font-size:0.85rem' }, [
+        el('span', { className: 'info-label' }, '업체명'), el('span', {}, pd.name || '-'),
+        el('span', { className: 'info-label' }, '카테고리'), el('span', {}, pd.category || '-'),
+        el('span', { className: 'info-label' }, '주소'), el('span', {}, pd.address || '-'),
+        el('span', { className: 'info-label' }, '메뉴'), el('span', {}, (pd.menuCount || 0) + '개'),
+        el('span', { className: 'info-label' }, '방문자 리뷰'), el('span', {}, (pd.reviewCount || 0).toLocaleString() + '건'),
+        el('span', { className: 'info-label' }, '블로그 리뷰'), el('span', {}, (pd.blogReviewCount || 0).toLocaleString() + '건'),
+        el('span', { className: 'info-label' }, '키워드'), el('span', {}, (pd.keywordCount || 0) + '종'),
+        el('span', { className: 'info-label' }, '사진'), el('span', {}, (pd.imageCount || 0) + '장'),
+      ]),
+    ]);
+    container.appendChild(summaryCard);
+  }
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(
+      () => alert('클립보드에 복사되었습니다!'),
+      () => alert('복사에 실패했습니다.')
+    );
+  }
+})();
+</script>
+</body>
+</html>
