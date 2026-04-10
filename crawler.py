@@ -734,10 +734,10 @@ def _parse_place_json(script: str, place_id: str) -> dict:
     # 방문자 리뷰 평점 (네이버 UI 표시값)
     score = _float_in(r'"visitorReviewsScore"\s*:\s*([0-9.]+)')
 
-    # blog_total: fsasReviews.total 우선, blogCafeReviewCount fallback
+    # blog_total: FsasReviewsResult.total 우선 (파라미터화된 키 대응), blogCafeReviewCount fallback
     blog_total = (
-        _int_in(r'"fsasReviews"[^}]{0,200}"total":(\d+)', flags=re.DOTALL)
-        or _int_in(r'"blogCafeReviewCount":(\d+)')
+        _int_in(r'FsasReviewsResult","total"\s*:\s*(\d+)')
+        or _int_in(r'"blogCafeReviewCount"\s*:\s*(\d+)')
     )
 
     # description: introduction 필드 우선, 없으면 빈 문자열
