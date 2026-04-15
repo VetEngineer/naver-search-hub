@@ -352,12 +352,19 @@ MOBILE_HEADERS = {
     "Referer": "https://m.place.naver.com/",
 }
 
+_PID_MARKER_RE = re.compile(r'__PID_(\d+)__')
+
 
 def search_place(query: str, display: int = 5) -> dict:
     """네이버 플레이스 검색 — 통합검색 결과 파싱 (API 키 불필요)
 
     네이버 통합검색의 .place-app-root 영역에서
     업체명, 전화, 주소, 방문자 리뷰 수, 블로그 리뷰 수를 추출한다.
+
+    place_id 매칭:
+      <a> 태그에 PID 마커를 삽입해 get_text() 내에서 위치를 추적하고,
+      카드 파싱 후 위치 기반으로 ID-카드를 재매칭한다.
+      (인덱스 기반 매칭은 광고 링크가 목록을 오염시켜 어긋남)
     """
     resp = requests.get(
         "https://search.naver.com/search.naver",
@@ -373,18 +380,39 @@ def search_place(query: str, display: int = 5) -> dict:
     if not root:
         return {"total": 0, "items": []}
 
-    text = root.get_text("|", strip=True)
-
-    # placeId 추출 (링크에서)
-    place_ids = []
+    # <a> 태그에 PID 마커를 삽입 → get_text() 결과에 위치가 보존됨
     for a_tag in root.select("a[href]"):
         href = a_tag.get("href", "")
         m = re.search(r"place/(\d+)", href)
-        if m and m.group(1) not in place_ids:
-            place_ids.append(m.group(1))
+        if m:
+            pid = m.group(1)
+            a_tag.insert(0, soup.new_string(f"__PID_{pid}__"))
+
+    marked_text = root.get_text("|", strip=True)
+
+    # 마커 위치를 기록한 뒤 텍스트에서 제거 (기존 패턴 호환 유지)
+    pid_positions: list[tuple[int, str]] = []
+    removed = 0
+    for m in _PID_MARKER_RE.finditer(marked_text):
+        pid_positions.append((m.start() - removed, m.group(1)))
+        removed += m.end() - m.start()
+
+    # 연속 동일 PID 마커 정규화 — 같은 카드 내 중복 링크에 의한 오매칭 방지
+    deduped: list[tuple[int, str]] = []
+    for pos, pid in pid_positions:
+        if deduped and deduped[-1][1] == pid and (pos - deduped[-1][0]) < 200:
+            continue
+        deduped.append((pos, pid))
+    pid_positions = deduped
+
+    text = _PID_MARKER_RE.sub("", marked_text)
+    place_ids = [pid for _, pid in pid_positions]
 
     items = _parse_place_cards(text, place_ids, display)
-    # total은 파싱된 건수 (네이버 통합검색 전체 건수 아님)
+
+    # 위치 기반 PID 재매칭 — 인덱스 어긋남 보정
+    _fix_pids_by_position(items, text, pid_positions)
+
     return {"total": len(items), "parsed": True, "items": items}
 
 
@@ -409,12 +437,17 @@ _PLACE_SKIP = frozenset({
 })
 
 _ADDR_PREFIX = re.compile(
-    r'^(?:서울|경기|부산|인천|대구|대전|광주|울산|세종|강원'
+    r'^(?:'
+    # 광역시/도/특별시 이름
+    r'서울|경기|부산|인천|대구|대전|광주|울산|세종|강원'
     r'|충[북남]|전[북남]|경[북남]|제주'
+    # 주요 시/군 (축약 주소 대응 — "수원 권선구 ..." 등)
     r'|평택|남양주|제천|창녕|포항|수원|성남|고양|용인|안산|안양'
     r'|의정부|김포|파주|화성|양주|구리|하남|광명|시흥|군포|오산|이천|양평'
     r'|춘천|원주|청주|천안|아산|전주|목포|여수|순천|경주|구미|거제|통영'
     r'|양산|진주|김해|창원|마산|진해'
+    # 긴 행정 접미사만 (특별시/광역시/특별자치시 — 1~2글자 '시/군/구'는 false positive 위험)
+    r'|[가-힣]{1,4}(?:특별자치시|특별자치도|특별시|광역시)'
     r')\s'
 )
 
@@ -541,6 +574,23 @@ def _parse_place_cards(text: str, place_ids: list[str], display: int) -> list[di
     return items
 
 
+_CARD_SKIP_TOKEN = re.compile(
+    r'^(?:'
+    r'\d+km$'                          # 거리 (3km)
+    r'|약\s*\d+(?:\.\d+)?km$'         # 약 1.2km
+    r'|\d+m$'                          # 거리 (300m)
+    r'|\d{1,2}:\d{2}$'                # 시간 (09:00) — $ 앵커로 '09:00커피' 보호
+    r'|[의치약한]\d+$'                 # 의료기관 ID (의129495)
+    r'|\d+(?:,\d+)?원$'               # 가격 (15,000원)
+    r'|\d+(?:\.\d+)?점$'              # 평점 (4.5점)
+    r'|★\s*[\d.]+$'                   # 별점 (★ 4.3) — $ 앵커로 '★1등타이어' 보호
+    r'|\d+번째$'                       # 순위 (1번째) — $ 앵커로 '1번째집' 보호
+    r'|\d+,\d{3}(?:,\d{3})*$'        # 콤마 포함 숫자 (1,234)
+    r'|\d{2,4}-\d{3,4}-\d{4}$'       # 전화번호 변형
+    r')$',
+)
+
+
 def _parse_one_card(card: str) -> dict:
     """개별 카드 텍스트 → {name, category, phone, addr}"""
     parts = card.split("|")
@@ -553,13 +603,9 @@ def _parse_one_card(card: str) -> dict:
             phone = p; continue
         if p.startswith("영업") or p.startswith("곧 영업"):
             continue
-        if re.match(r'^\d{1,2}:\d{2}', p):
-            continue
-        if re.match(r'^\d+km$', p):
+        if _CARD_SKIP_TOKEN.match(p):
             continue
         if "쿠폰" in p and len(p) > 5:
-            continue
-        if re.match(r'^[의치약한]\d+$', p):  # 의료기관 ID (의129495, 치35854 등)
             continue
         if _ADDR_PREFIX.match(p):
             addr = p; continue
@@ -570,22 +616,33 @@ def _parse_one_card(card: str) -> dict:
     return {"name": name, "category": category, "phone": phone, "addr": addr}
 
 
+_FULL_REGION_PREFIX = re.compile(
+    r'^(?:서울특별시|부산광역시|대구광역시|인천광역시|광주광역시'
+    r'|대전광역시|울산광역시|세종특별자치시|경기도'
+    r'|강원(?:도|특별자치도)'
+    r'|충청(?:남도|북도)'
+    r'|전라(?:남도|북도)|전북특별자치도'
+    r'|경상(?:남도|북도)'
+    r'|제주(?:도|특별자치도))'
+)
+
+
 def _find_name_reverse(text: str) -> str:
     """텍스트 끝에서부터 의미있는 업체명 탐색"""
     for p in reversed(text.split("|")):
         p = p.strip()
         if (2 <= len(p) <= 30
             and p not in _PLACE_SKIP
+            and not _CARD_SKIP_TOKEN.match(p)
             and not re.match(r'^[\d,.]+$', p)
             and not re.match(r'^\d{2,4}-', p)
             and not p.startswith("영업")
             and not p.startswith("곧 영업")
-            and not re.match(r'^\d{1,2}:\d{2}', p)
             and not _ADDR_PREFIX.match(p)
+            and not _FULL_REGION_PREFIX.match(p)
             and "필터" not in p
             and "검색하기" not in p
-            and not _NAME_DENY.search(p)
-            and not re.match(r'^(?:서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|경기도|강원)', p)):
+            and not _NAME_DENY.search(p)):
             return p
     return ""
 
@@ -593,7 +650,12 @@ def _find_name_reverse(text: str) -> str:
 def _find_addr(text: str) -> str:
     """텍스트에서 주소 추출"""
     m = re.search(
-        r'((?:서울|경기|부산|인천|대구|대전|광주|울산|세종|강원'
+        r'((?:서울특별시|부산광역시|대구광역시|인천광역시|광주광역시'
+        r'|대전광역시|울산광역시|세종특별자치시|경기도'
+        r'|강원(?:도|특별자치도)|충청(?:남도|북도)'
+        r'|전라(?:남도|북도)|전북특별자치도|경상(?:남도|북도)'
+        r'|제주(?:도|특별자치도)'
+        r'|서울|경기|부산|인천|대구|대전|광주|울산|세종|강원'
         r'|충[북남]|전[북남]|경[북남]|제주)\s+\S+\s+\S+)',
         text,
     )
@@ -612,6 +674,92 @@ def _parse_review_count(s: str) -> int:
         except ValueError:
             return 10000
     return int(s) if s.isdigit() else 0
+
+
+def _find_token_position(text: str, name: str, start: int = 0) -> int:
+    """텍스트에서 업체명을 독립 토큰으로 찾는다.
+
+    '|' 구분 텍스트에서 다른 단어의 부분문자열이 아닌
+    완전한 토큰 위치만 반환한다.
+    예: '황반장골프' 안의 '황반장'은 무시하고 '|황반장|' 위치를 반환.
+    """
+    pos = start
+    while True:
+        pos = text.find(name, pos)
+        if pos < 0:
+            return -1
+        before_ok = pos == 0 or text[pos - 1] in "| "
+        after_pos = pos + len(name)
+        after_ok = after_pos >= len(text) or text[after_pos] in "| "
+        if before_ok and after_ok:
+            return pos
+        pos += 1
+
+
+def _fix_pids_by_position(
+    items: list[dict], text: str, pid_positions: list[tuple[int, str]]
+) -> None:
+    """카드 업체명의 텍스트 위치와 PID 마커 위치를 대조하여
+    인덱스 기반 매칭의 오류를 보정한다.
+
+    광고 링크가 place_ids 목록에 섞여 organic 카드에
+    잘못된 PID가 할당되는 문제를 해결한다.
+    """
+    if not pid_positions or not items:
+        return
+
+    # 각 카드의 업체명이 텍스트에서 나타나는 위치를 찾는다
+    search_from = 0
+    card_positions: list[tuple[int, int]] = []  # (name_pos, item_index)
+    for idx, item in enumerate(items):
+        name = item.get("title", "").strip()
+        if not name:
+            card_positions.append((-1, idx))
+            continue
+        # 독립 토큰 매칭 → 부분문자열 오매칭 방지
+        pos = _find_token_position(text, name, search_from)
+        if pos < 0:
+            pos = _find_token_position(text, name)
+        if pos < 0:
+            # 토큰 매칭 실패 시 일반 find fallback
+            pos = text.find(name, search_from)
+            if pos < 0:
+                pos = text.find(name)
+        if pos >= 0:
+            search_from = pos + len(name)
+        card_positions.append((pos, idx))
+
+    # 각 카드에 가장 가까운 PID 마커를 매칭 (카드 경계 존중)
+    used_markers: set[int] = set()
+    for ci, (name_pos, idx) in enumerate(card_positions):
+        if name_pos < 0:
+            continue
+        # 다음 카드 위치를 경계로 설정 — 이후 카드의 마커를 소비하지 않음
+        next_card_pos = float("inf")
+        for nci in range(ci + 1, len(card_positions)):
+            if card_positions[nci][0] >= 0:
+                next_card_pos = card_positions[nci][0]
+                break
+        best_pid = ""
+        best_dist = float("inf")
+        best_marker_idx = -1
+        for mi, (pid_pos, pid) in enumerate(pid_positions):
+            if mi in used_markers:
+                continue
+            if pid_pos >= next_card_pos:
+                continue
+            # PID 마커는 <a> 시작점 → 업체명보다 뒤에 있으면 다른 카드의 마커
+            if pid_pos > name_pos:
+                continue
+            dist = name_pos - pid_pos
+            if dist < best_dist:
+                best_dist = dist
+                best_pid = pid
+                best_marker_idx = mi
+        if best_pid and best_dist < 600:
+            used_markers.add(best_marker_idx)
+            items[idx]["placeId"] = best_pid
+            items[idx]["link"] = f"https://m.place.naver.com/place/{best_pid}/home"
 
 
 def _mk(name="", category="", phone="", addr="", visitor=0, blog=0, pid="") -> dict:
@@ -778,11 +926,25 @@ def _parse_place_json(script: str, place_id: str) -> dict:
     # 10000자로 확장 — 메뉴/이미지 많은 업체에서 category 누락 방지
     pdb = script[pdb_start:pdb_start + 10000] if pdb_start >= 0 else ""
 
-    # name은 PlaceDetailBase 섹션 우선, 없으면 전체 스크립트 fallback
-    name = (
-        (_first(r'"name":"([^"]+)"', pdb) if pdb else "")
-        or _first(r'"name":"([^"]+)"')
-    )
+    # name은 PlaceDetailBase 섹션 우선
+    # fallback: 구조적 키("id":"place_id")로 앵커링하여 주변 2000자에서 검색
+    # (bare digit 검색 시 URL 내 숫자에 걸리는 문제 방지)
+    _NAME_RE = r'"name"\s*:\s*"([^"]+)"'
+    name = (_first(_NAME_RE, pdb) if pdb else "")
+    if not name:
+        # place_id를 JSON 키:값으로 앵커링 — 공백 변형/키명 차이 허용
+        esc_pid = re.escape(place_id)
+        pid_match = re.search(
+            rf'"(?:id|placeId|businessId)"\s*:\s*"?{esc_pid}"?',
+            script,
+        )
+        if not pid_match:
+            # 미지의 키명 대응: place_id가 정확한 JSON 문자열 값으로 등장
+            pid_match = re.search(rf':\s*"{esc_pid}"', script)
+        if pid_match:
+            pos = pid_match.start()
+            near = script[max(0, pos - 500):pos + 2000]
+            name = _first(_NAME_RE, near)
     # category도 pdb 우선, 전체 fallback
     category = (
         re.search(r'"category":"([^"]+)"', pdb) if pdb
@@ -885,7 +1047,10 @@ def fetch_place_by_id(place_id: str) -> dict:
     used_url = ""
     for url in candidates:
         try:
-            resp = requests.get(url, headers=MOBILE_HEADERS, timeout=3)
+            resp = requests.get(
+                url, headers=MOBILE_HEADERS,
+                timeout=3,
+            )
             if resp.status_code == 200 and len(resp.text) >= 5000:
                 resp.encoding = "utf-8"
                 script = _extract_place_script(resp.text)
@@ -918,7 +1083,11 @@ def fetch_place_by_id(place_id: str) -> dict:
     for addr_field in ("roadAddress", "address"):
         if base.get(addr_field):
             parts = base[addr_field].split()
-            addr_short = parts[0] if parts else ""
+            # 도/광역시(경기, 서울 등)만 있으면 너무 넓으므로 시/구까지 포함
+            if len(parts) >= 2 and len(parts[0]) <= 3:
+                addr_short = f"{parts[0]} {parts[1]}"
+            elif parts:
+                addr_short = parts[0]
             break
     blog_query = f"{addr_short} {name}".strip() if addr_short else name
     try:

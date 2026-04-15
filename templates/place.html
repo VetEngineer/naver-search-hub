@@ -223,9 +223,7 @@
 
     const list = el('div', { className: 'place-list' });
     data.items.forEach(item => {
-      // link에서 placeId 추출
-      const pidMatch = (item.link || '').match(/place\/(\d+)/);
-      const placeId = pidMatch ? pidMatch[1] : '';
+      const placeId = item.placeId || '';
 
       const cardClass = placeId ? 'place-card' : 'place-card no-id';
       const card = el('div', { className: cardClass }, [

@@ -497,7 +497,8 @@
       const priceStr = item.lprice ? item.lprice.toLocaleString() + '원' : '가격 미정';
       const tags = [item.brand, item.category2, item.category3].filter(Boolean);
       const img = el('img', { loading: 'lazy' });
-      img.src = item.image;
+      const imgSrc = item.image || '';
+      img.src = isNaverImage(imgSrc) ? proxyImg(imgSrc) : imgSrc;
       img.addEventListener('error', function () { this.style.display = 'none'; });
 
       const metaChildren = [el('span', { className: 'price-text' }, priceStr)];
@@ -806,6 +807,14 @@
   }
 
   function enc(s) { return encodeURIComponent(s); }
+
+  function isNaverImage(url) {
+    if (!url || !url.startsWith('https://')) return false;
+    try {
+      var h = new URL(url).hostname;
+      return h.endsWith('pstatic.net') || h.endsWith('naver.net');
+    } catch (_) { return false; }
+  }
 
   function proxyImg(src) {
     return '/api/image-proxy?url=' + enc(src);
